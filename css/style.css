@@ -1,0 +1,21 @@
+body {
+    font-family: 'Arial', sans-serif;
+}
+
+.navbar {
+    margin-bottom: 20px;
+}
+
+.nav-link {
+    font-size: 16px;
+}
+
+.list-group-item {
+    padding: 10px 20px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+}
+
+.list-group-item .btn {
+    font-size: 14px;
+}
