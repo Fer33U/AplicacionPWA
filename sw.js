@@ -1,17 +1,17 @@
 const CACHE_NAME = 'lista-compras-cache-v1';
 const urlsToCache = [
-    //Paginas html
+    // Paginas html
     '/', 
     '/pages/index.html', 
     '/pages/articulo.html', 
     '/pages/historial.html', 
     '/pages/configuracion.html',
-    // Archivo de estilos CSS
+    // Archivos CSS
     '/css/style.css',
     '/css/historial.css',
     '/css/configuracion.css',
     '/css/articulo.css',
-    //Iconos
+    // Iconos
     '/icons/icon-72x72.png',
     '/icons/icon-96x96.png',
     '/icons/icon-128x128.png',
@@ -20,11 +20,15 @@ const urlsToCache = [
     '/icons/icon-192x192.png',
     '/icons/icon-384x384.png',
     '/icons/icon-512x512.png',
-    //Archivos js
+    // Archivos js
     '/js/articulo.js',
     '/js/configuracion.js',
     '/js/historial.js',
     '/js/index.js',
+    // Manifiesto
+    '/manifest.json',
+    //ServiceWorker
+    '/sw.js'
 ];
 
 // Evento de instalación: almacenamos en caché los recursos estáticos
@@ -68,3 +72,52 @@ self.addEventListener('fetch', (event) => {
             })
     );
 });
+
+// Agregar soporte para sincronización en segundo plano
+self.addEventListener('sync', (event) => {
+    if (event.tag === 'sync-articles') {
+        event.waitUntil(syncArticles());
+    }
+});
+
+function syncArticles() {
+    return new Promise((resolve, reject) => {
+        const dbPromise = indexedDB.open('shoppingListDB', 1);
+        dbPromise.onsuccess = (e) => {
+            const db = e.target.result;
+            const transaction = db.transaction(['articles'], 'readonly');
+            const store = transaction.objectStore('articles');
+            const request = store.getAll();
+
+            request.onsuccess = () => {
+                const articles = request.result.filter(article => !article.completed);
+                if (articles.length > 0) {
+                    // Simulamos el envío de los artículos al servidor
+                    fetch('/sync-articles', {
+                        method: 'POST',
+                        body: JSON.stringify(articles),
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        const transaction = db.transaction(['articles'], 'readwrite');
+                        const store = transaction.objectStore('articles');
+                        articles.forEach(article => {
+                            article.completed = true;
+                            store.put(article); // Marcar como completado
+                        });
+                        resolve();
+                    })
+                    .catch(reject);
+                } else {
+                    resolve();  // Si no hay artículos pendientes, resolver
+                }
+            };
+
+            request.onerror = (e) => reject(e.target.error);
+        };
+    });
+}
+

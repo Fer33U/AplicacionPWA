@@ -4,14 +4,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const itemQuantity = document.getElementById('item-quantity');
     const itemPhoto = document.getElementById('item-photo');
 
-    // Comprobar si estamos editando un artículo
     const editItem = JSON.parse(localStorage.getItem('editItem'));
 
     if (editItem) {
         itemName.value = editItem.name;
         itemQuantity.value = editItem.quantity;
-        // Aquí, deberías agregar código para mostrar la foto actual en el formulario
-        // Puedes mostrarla de alguna forma, pero recuerda que IndexedDB guarda la foto como base64
+        // Mostrar la foto actual si es necesario
     }
 
     form.addEventListener('submit', (e) => {
@@ -26,7 +24,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Crear un objeto Image para comprimir la imagen
         const img = new Image();
         const reader = new FileReader();
 
@@ -37,44 +34,48 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.readAsDataURL(photo); // Convierte la foto a base64
 
         img.onload = function() {
-            // Crear un canvas para redimensionar/comprimir la imagen
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
 
-            // Redimensiona la imagen para que no sea tan grande
             const maxWidth = 300;  // Ancho máximo de la imagen
             const scale = maxWidth / img.width;
             canvas.width = maxWidth;
             canvas.height = img.height * scale;
 
-            // Dibuja la imagen redimensionada en el canvas
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-            // Convierte el canvas en base64 con calidad ajustada (comprimir)
-            const compressedPhoto = canvas.toDataURL('image/jpeg', 0.7); // Comprime a 70% de calidad
+            const compressedPhoto = canvas.toDataURL('image/jpeg', 0.7);
 
             const article = {
                 name,
                 quantity,
-                photo: compressedPhoto // Almacena la imagen comprimida
+                photo: compressedPhoto,
+                completed: false, // Indicamos que el artículo no está completado aún
             };
 
-            // Si estamos editando, actualizamos el artículo
             const openRequest = indexedDB.open('shoppingListDB', 1);
 
             openRequest.onsuccess = (e) => {
                 const db = e.target.result;
                 const transaction = db.transaction(['articles'], 'readwrite');
                 const store = transaction.objectStore('articles');
+
                 if (editItem) {
-                    store.put(article); // Actualizar artículo
+                    store.put(article); // Actualiza el artículo
                 } else {
                     store.add(article); // Nuevo artículo
                 }
 
                 transaction.oncomplete = () => {
-                    localStorage.removeItem('editItem'); // Limpiar el artículo editado
-                    window.location.href = 'index.html'; // Redirigir al inicio después de guardar
+                    // Después de agregar el artículo, aseguramos la sincronización
+                    if (!navigator.serviceWorker.controller) return;
+
+                    navigator.serviceWorker.ready.then((registration) => {
+                        registration.sync.register('sync-articles');
+                    });
+
+                    localStorage.removeItem('editItem');
+                    window.location.href = 'index.html'; // Redirigir después de guardar
                 };
             };
         };

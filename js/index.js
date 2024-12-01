@@ -1,68 +1,146 @@
 document.addEventListener('DOMContentLoaded', () => {
     const itemList = document.getElementById('item-list');
 
-    // Abre la base de datos IndexedDB
-    const openRequest = indexedDB.open('shoppingListDB', 1);
+    // Registrar el Service Worker
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js')  // Ruta a tu service worker
+                .then((registration) => {
+                    console.log('Service Worker registrado con éxito:', registration);
 
-    openRequest.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains('articles')) {
-            db.createObjectStore('articles', { keyPath: 'name' });
-        }
-    };
-
-    openRequest.onsuccess = (e) => {
-        const db = e.target.result;
-
-        // Obtener los artículos desde la base de datos
-        const transaction = db.transaction(['articles'], 'readonly');
-        const store = transaction.objectStore('articles');
-        const request = store.getAll();
-
-        request.onsuccess = () => {
-            const articles = request.result;
-            articles.forEach(article => {
-                const item = document.createElement('div');
-                item.classList.add('list-group-item', 'd-flex', 'align-items-center', 'justify-content-between');
-
-                item.innerHTML = `
-                    <div class="d-flex align-items-center">
-                        <img src="${article.photo}" alt="${article.name}" class="me-3" style="width: 50px; height: 50px; object-fit: cover;">
-                        <span>${article.name}</span>
-                    </div>
-                    <div>
-                        <button class="btn btn-success btn-sm me-1 check-btn"><i class="fas fa-check"></i></button>
-                        <button class="btn btn-warning btn-sm me-1 edit-btn" onclick="editItem('${article.name}')"><i class="fas fa-edit"></i></button>
-                        <button class="btn btn-danger btn-sm delete-btn" onclick="deleteItem('${article.name}')"><i class="fas fa-trash"></i></button>
-                    </div>
-                `;
-
-                // Agregar el evento para el botón de "check"
-                const checkButton = item.querySelector('.check-btn');
-                checkButton.addEventListener('click', () => {
-                    // Cambiar el color del artículo
-                    item.style.backgroundColor = '#f8f9fa'; // Gris claro
-
-                    // Deshabilitar los botones de edición y check
-                    const editButton = item.querySelector('.edit-btn');
-                    const deleteButton = item.querySelector('.delete-btn');
-                    checkButton.disabled = true;
-                    editButton.disabled = true;
-                    deleteButton.disabled = false; // Solo el de eliminar permanece habilitado
+                    // Registrar la sincronización cuando se realice una acción fuera de línea
+                    if ('sync' in navigator) {
+                        registration.sync.register('sync-articles')  // Nombre de la tarea de sincronización
+                            .then(() => {
+                                console.log('Sincronización registrada');
+                            })
+                            .catch((error) => {
+                                console.log('Error al registrar la sincronización:', error);
+                            });
+                    }
+                })
+                .catch((error) => {
+                    console.log('Error al registrar el Service Worker:', error);
                 });
+        });
+    }
 
-                itemList.appendChild(item);
-            });
-        };
-    };
+    // Inicializar IndexedDB
+    initDB()
+        .then(db => loadArticles(db))
+        .catch(console.error);
 });
 
-// Función para editar un artículo
-function editItem(itemName) {
-    const openRequest = indexedDB.open('shoppingListDB', 1);
+// Código para IndexedDB y otras funcionalidades de tu app sigue igual...
 
-    openRequest.onsuccess = (e) => {
-        const db = e.target.result;
+// Inicializar la base de datos
+function initDB() {
+    return new Promise((resolve, reject) => {
+        const openRequest = indexedDB.open('shoppingListDB', 1);
+
+        openRequest.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains('articles')) {
+                db.createObjectStore('articles', { keyPath: 'name' });
+            }
+            if (!db.objectStoreNames.contains('history')) {
+                db.createObjectStore('history', { autoIncrement: true });
+            }
+        };
+
+        openRequest.onsuccess = (e) => resolve(e.target.result);
+        openRequest.onerror = (e) => reject(e.target.error);
+    });
+}
+
+// Cargar los artículos en la lista
+function loadArticles(db) {
+    const transaction = db.transaction(['articles'], 'readonly');
+    const store = transaction.objectStore('articles');
+    const request = store.getAll();
+
+    request.onsuccess = () => {
+        const articles = request.result;
+        articles.forEach(article => renderArticle(article));
+    };
+
+    request.onerror = (e) => console.error('Error loading articles:', e.target.error);
+}
+
+// Renderizar un artículo en la lista
+function renderArticle(article) {
+    const itemList = document.getElementById('item-list');
+    const item = document.createElement('div');
+    item.classList.add('list-group-item', 'd-flex', 'align-items-center', 'justify-content-between');
+    item.dataset.name = article.name;
+
+    if (article.completed) {
+        item.style.backgroundColor = '#f8f9fa';
+    }
+
+    item.innerHTML = `
+        <div class="d-flex align-items-center">
+            <img src="${article.photo}" alt="${article.name}" class="me-3" style="width: 50px; height: 50px; object-fit: cover;">
+            <span>${article.name} (${article.quantity || 1})</span>
+        </div>
+        <div>
+            <button class="btn btn-success btn-sm me-1 check-btn" ${article.completed ? 'disabled' : ''}><i class="fas fa-check"></i></button>
+            <button class="btn btn-warning btn-sm me-1 edit-btn" ${article.completed ? 'disabled' : ''}><i class="fas fa-edit"></i></button>
+            <button class="btn btn-danger btn-sm delete-btn"><i class="fas fa-trash"></i></button>
+        </div>
+    `;
+
+    item.querySelector('.check-btn').addEventListener('click', () => markAsChecked(item, article));
+    item.querySelector('.edit-btn').addEventListener('click', () => editItem(article.name));
+    item.querySelector('.delete-btn').addEventListener('click', () => deleteItem(article.name, item));
+
+    itemList.appendChild(item);
+}
+
+// Marcar artículo como completado
+function markAsChecked(item, article) {
+    item.style.backgroundColor = '#f8f9fa';
+    item.querySelector('.check-btn').disabled = true;
+    item.querySelector('.edit-btn').disabled = true;
+    item.querySelector('.delete-btn').disabled = true;
+
+    // Actualizar el estado del artículo en la base de datos
+    article.completed = true;
+
+    initDB().then(db => {
+        const transaction = db.transaction(['articles'], 'readwrite');
+        const store = transaction.objectStore('articles');
+        store.put(article);
+
+        // Guardar en el historial
+        const today = new Date().toISOString().split('T')[0];
+        const historyItem = { ...article, date: today };
+
+        const historyTransaction = db.transaction(['history'], 'readwrite');
+        const historyStore = historyTransaction.objectStore('history');
+        historyStore.add(historyItem);
+
+        historyTransaction.onerror = (e) => console.error('Error saving to history:', e.target.error);
+    });
+
+    // Si el navegador está offline, intentar sincronizar más tarde
+    if (!navigator.onLine) {
+        storeSyncData(article);
+    }
+}
+
+// Guardar los datos que no se han sincronizado
+function storeSyncData(article) {
+    initDB().then(db => {
+        const transaction = db.transaction(['syncQueue'], 'readwrite');
+        const store = transaction.objectStore('syncQueue');
+        store.add(article); // Guardar el artículo para sincronizarlo más tarde
+    });
+}
+
+// Editar un artículo
+function editItem(itemName) {
+    initDB().then(db => {
         const transaction = db.transaction(['articles'], 'readonly');
         const store = transaction.objectStore('articles');
         const request = store.get(itemName);
@@ -70,25 +148,26 @@ function editItem(itemName) {
         request.onsuccess = () => {
             const article = request.result;
 
-            // Guardar el artículo en localStorage para usarlo en la página de edición
+            // Guardar en localStorage y redirigir
             localStorage.setItem('editItem', JSON.stringify(article));
-            window.location.href = 'articulo.html'; // Redirigir a la página de editar artículo
+            window.location.href = 'articulo.html';
         };
-    };
+
+        request.onerror = (e) => console.error('Error fetching article for editing:', e.target.error);
+    });
 }
 
-// Eliminar artículo
-function deleteItem(itemName) {
-    const openRequest = indexedDB.open('shoppingListDB', 1);
-
-    openRequest.onsuccess = (e) => {
-        const db = e.target.result;
+// Eliminar un artículo
+function deleteItem(itemName, itemElement) {
+    initDB().then(db => {
         const transaction = db.transaction(['articles'], 'readwrite');
         const store = transaction.objectStore('articles');
         store.delete(itemName);
 
         transaction.oncomplete = () => {
-            location.reload(); // Recargar la lista
+            itemElement.remove(); // Eliminar del DOM directamente
         };
-    };
+
+        transaction.onerror = (e) => console.error('Error deleting article:', e.target.error);
+    });
 }
