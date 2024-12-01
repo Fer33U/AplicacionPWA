@@ -31,8 +31,6 @@ document.addEventListener('DOMContentLoaded', () => {
         .catch(console.error);
 });
 
-// Código para IndexedDB y otras funcionalidades de tu app sigue igual...
-
 // Inicializar la base de datos
 function initDB() {
     return new Promise((resolve, reject) => {
@@ -102,7 +100,7 @@ function markAsChecked(item, article) {
     item.style.backgroundColor = '#f8f9fa';
     item.querySelector('.check-btn').disabled = true;
     item.querySelector('.edit-btn').disabled = true;
-    item.querySelector('.delete-btn').disabled = true;
+    item.querySelector('.delete-btn').disabled = false;
 
     // Actualizar el estado del artículo en la base de datos
     article.completed = true;
@@ -122,6 +120,17 @@ function markAsChecked(item, article) {
 
         historyTransaction.onerror = (e) => console.error('Error saving to history:', e.target.error);
     });
+
+    // Enviar una notificación push cuando se marque el artículo
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then((registration) => {
+            registration.showNotification('Bien hecho', {
+                body: `¡Has comprado 1 de tus artículos!`,
+                icon: '/icons/icon-192x192.png',
+                badge: '/icons/icon-96x96.png'
+            });
+        });
+    }
 
     // Si el navegador está offline, intentar sincronizar más tarde
     if (!navigator.onLine) {
@@ -169,5 +178,16 @@ function deleteItem(itemName, itemElement) {
         };
 
         transaction.onerror = (e) => console.error('Error deleting article:', e.target.error);
+    });
+}
+
+// Solicitar permiso para las notificaciones push
+if ('Notification' in window && 'serviceWorker' in navigator) {
+    Notification.requestPermission().then(permission => {
+        if (permission === 'granted') {
+            console.log('Permiso para notificaciones concedido');
+        } else {
+            console.log('Permiso para notificaciones denegado');
+        }
     });
 }

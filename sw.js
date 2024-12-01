@@ -1,15 +1,15 @@
 const CACHE_NAME = 'lista-compras-cache-v1';
 const urlsToCache = [
-    // Paginas html
+    // Páginas HTML
     '/', 
     '/pages/index.html', 
     '/pages/articulo.html', 
     '/pages/historial.html', 
-    '/pages/configuracion.html',
+    '/pages/informacion.html',
     // Archivos CSS
     '/css/style.css',
     '/css/historial.css',
-    '/css/configuracion.css',
+    '/css/informacion.css',
     '/css/articulo.css',
     // Iconos
     '/icons/icon-72x72.png',
@@ -20,14 +20,13 @@ const urlsToCache = [
     '/icons/icon-192x192.png',
     '/icons/icon-384x384.png',
     '/icons/icon-512x512.png',
-    // Archivos js
+    // Archivos JS
     '/js/articulo.js',
-    '/js/configuracion.js',
     '/js/historial.js',
     '/js/index.js',
     // Manifiesto
     '/manifest.json',
-    //ServiceWorker
+    // Service Worker
     '/sw.js'
 ];
 
@@ -40,6 +39,20 @@ self.addEventListener('install', (event) => {
             })
     );
 });
+
+// Escuchar eventos de notificación push
+self.addEventListener('push', (event) => {
+    let options = {
+        body: event.data ? event.data.text() : 'Tienes un nuevo recordatorio.',
+        icon: '/icons/icon-192x192.png',
+        badge: '/icons/icon-96x96.png'
+    };
+
+    event.waitUntil(
+        self.registration.showNotification('Lista de Compras', options)
+    );
+});
+
 
 // Evento de activación: eliminamos cachés viejos
 self.addEventListener('activate', (event) => {
@@ -72,52 +85,3 @@ self.addEventListener('fetch', (event) => {
             })
     );
 });
-
-// Agregar soporte para sincronización en segundo plano
-self.addEventListener('sync', (event) => {
-    if (event.tag === 'sync-articles') {
-        event.waitUntil(syncArticles());
-    }
-});
-
-function syncArticles() {
-    return new Promise((resolve, reject) => {
-        const dbPromise = indexedDB.open('shoppingListDB', 1);
-        dbPromise.onsuccess = (e) => {
-            const db = e.target.result;
-            const transaction = db.transaction(['articles'], 'readonly');
-            const store = transaction.objectStore('articles');
-            const request = store.getAll();
-
-            request.onsuccess = () => {
-                const articles = request.result.filter(article => !article.completed);
-                if (articles.length > 0) {
-                    // Simulamos el envío de los artículos al servidor
-                    fetch('/sync-articles', {
-                        method: 'POST',
-                        body: JSON.stringify(articles),
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        const transaction = db.transaction(['articles'], 'readwrite');
-                        const store = transaction.objectStore('articles');
-                        articles.forEach(article => {
-                            article.completed = true;
-                            store.put(article); // Marcar como completado
-                        });
-                        resolve();
-                    })
-                    .catch(reject);
-                } else {
-                    resolve();  // Si no hay artículos pendientes, resolver
-                }
-            };
-
-            request.onerror = (e) => reject(e.target.error);
-        };
-    });
-}
-
